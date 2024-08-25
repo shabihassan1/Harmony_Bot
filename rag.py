@@ -7,7 +7,8 @@ import signal
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 
-hf_token = "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"  
+# Please add your hugging face key for LLAMA-3 Family
+hf_token = "your-key"  
 
 chat_doctor_dataset = load_dataset("avaliev/chat_doctor")
 mental_health_dataset = load_dataset("Amod/mental_health_counseling_conversations")
