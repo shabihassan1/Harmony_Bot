@@ -1,51 +1,58 @@
-import os
 import torch
-from transformers import DistilBertTokenizer, DistilBertForSequenceClassification, Trainer, TrainingArguments, DataCollatorWithPadding
-from datasets import load_dataset, DatasetDict
+from transformers import BertTokenizer, BertForSequenceClassification, Trainer, TrainingArguments, DataCollatorWithPadding
+from datasets import load_dataset
 
-# Load model and tokenizer
-model_name = "distilbert-base-uncased"
-tokenizer = DistilBertTokenizer.from_pretrained(model_name)
-model = DistilBertForSequenceClassification.from_pretrained(model_name, num_labels=2)
+# Load the original dataset directly
+dataset = load_dataset("avaliev/chat_doctor", split="train")
 
-# Load and preprocess the dataset
-dataset = load_dataset("Amod/mental_health_counseling_conversations")
+# Initialize the tokenizer and model
+tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+model = BertForSequenceClassification.from_pretrained("bert-base-uncased", num_labels=2)
 
-# Split the dataset into train and validation sets
-dataset = dataset["train"].train_test_split(test_size=0.1)
-print(dataset)
-
+# Convert the 'output' to a binary label based on specific conditions
 def preprocess_function(examples):
-    # Combine context and response into input_ids and create dummy labels
-    inputs = tokenizer(examples['Context'], examples['Response'], truncation=True, padding="max_length", max_length=512)
-    inputs["labels"] = [1 if response else 0 for response in examples["Response"]]  # Assuming binary classification for demonstration
+    inputs = tokenizer(
+        examples['input'], truncation=True, padding="max_length", max_length=256
+    )
+    # Convert the output into binary labels (this is just a placeholder logic)
+    # Adjust this logic based on your actual task requirements.
+    # For example: 
+    # inputs['labels'] = [1 if "urgent" in output else 0 for output in examples['output']]
+    # You may need to adjust this according to your dataset's needs.
+    inputs['labels'] = [0 if len(output) < 50 else 1 for output in examples['output']]  # Example condition
     return inputs
 
+# Tokenize the dataset
 tokenized_dataset = dataset.map(preprocess_function, batched=True)
 
+# Data collator for dynamic padding
 data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
 # Set training arguments
 training_args = TrainingArguments(
     output_dir="./results",
     overwrite_output_dir=True,
-    num_train_epochs=3,
-    per_device_train_batch_size=8,
-    per_device_eval_batch_size=8,
+    num_train_epochs=3,  # Adjust based on dataset size and requirements
+    per_device_train_batch_size=16,  # Use appropriate batch size for your hardware
+    per_device_eval_batch_size=16,
     save_steps=10_000,
     save_total_limit=2,
-    evaluation_strategy="steps",
-    eval_steps=500,  # Adjust evaluation steps as necessary
-    fp16=True,
+    eval_strategy="steps",  # Updated from deprecated `evaluation_strategy`
+    eval_steps=1000,  # Evaluate every 1000 steps
+    fp16=True,  # Enable mixed precision training for faster training
     logging_dir='./logs',
+    logging_steps=100,  # Log every 100 steps
+    learning_rate=2e-5,  # Fine-tune learning rate if needed
+    warmup_steps=500,  # Warmup steps for learning rate scheduler
+    weight_decay=0.01,  # Weight decay to prevent overfitting
 )
 
 # Initialize Trainer
 trainer = Trainer(
     model=model,
     args=training_args,
-    train_dataset=tokenized_dataset["train"],
-    eval_dataset=tokenized_dataset["test"],
+    train_dataset=tokenized_dataset,  # Use the entire tokenized dataset
+    eval_dataset=tokenized_dataset,  # Assuming validation split is done manually or not needed
     tokenizer=tokenizer,
     data_collator=data_collator,
 )
@@ -54,4 +61,4 @@ trainer = Trainer(
 trainer.train()
 
 # Save the trained model
-trainer.save_model("./medical_conversational_distilbert")
+trainer.save_model("./medical_conversational_bert")
